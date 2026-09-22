@@ -71,6 +71,7 @@ private:
     float learning_rate = 0.1f;        // 学习率，表示每次更新价值函数时，当前状态的价值会向目标状态的价值靠近多少
     float discount_factor = 0.95f;     // 折扣因子，表示未来奖励的折扣程度
     unordered_map<int, float> v_table; // board -> value， board本身是用int表示的，value是float类型的，我们存储的是X胜利的概率，对于X实际赢的概率，v_table的值是1，对于O实际赢的概率，v_table的值是0，对于平局的概率，v_table的值是0.5，对于未结束的游戏，v_table的值是0.5
+    float epsilon = 0.1f;              // epsilon-greedy策略的epsilon值，表示有多少概率选择随机动作，而不是选择最优动作
     float get_v(int board_key) const
     {
         auto it = v_table.find(board_key);
@@ -89,6 +90,12 @@ public:
         // 进入实际的策略选择逻辑
         if (state.turn == TicTacToe::PLAYER_X)
         {
+            // 使用epsilon-greedy策略
+            // recap: rand()返回一个0到RAND_MAX之间的随机整数，rand() % 100返回一个0到99之间的随机整数，epsilon * 100是一个0到100之间的浮点数，表示选择随机动作的概率
+            if (rand() % 100 < epsilon * 100)
+            {
+                return actions[rand() % actions.size()];
+            }
             // TODO
             // 根据当前状态和价值函数，选择一个最优动作
             for (const auto &action : actions)
@@ -108,6 +115,11 @@ public:
         }
         else
         {
+            // 使用epsilon-greedy策略
+            if (rand() % 100 < epsilon * 100)
+            {
+                return actions[rand() % actions.size()];
+            }
             // 假定当前状态是O的回合，选择一个最优动作
             for (const auto &action : actions)
             {
@@ -126,6 +138,7 @@ public:
     }
     TicTacToePolicyEx()
     {
+        this->epsilon = 0.1;
         this->learning_rate = 0.1;
         this->discount_factor = 0.95;
     }
@@ -194,15 +207,15 @@ int main()
     bool done = false;
     // set verbose true
     env.verbose = true;
-    // TicTacToePolicyDefault policy;
-    TicTacToePolicyRandom policy;
+    env.reset(); // 重置环境
     while (not done)
     {
         TicTacToe::State state = env.get_state();
-        TicTacToe::Action action = policy(state);
+        // X 用训练好的策略，O 用默认策略
+        TicTacToePolicyBase &cur = (state.turn == TicTacToe::PLAYER_X) ? ref_x : ref_o;
+        TicTacToe::Action action = cur(state);
         env.step(action);
         done = env.done();
-        // env.step_back();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
     int winner = env.winner();
