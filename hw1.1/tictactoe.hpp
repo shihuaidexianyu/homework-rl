@@ -5,6 +5,7 @@
 class TicTacToe
 {
 public:
+    // constexpr是声明常量表达式的关键字，表示在编译时就能确定值的常量
     static constexpr const int PLAYER_NONE = 0b00, PLAYER_X = 0b01, PLAYER_O = 0b10;
     static constexpr const char *PLAYER_NAME = "_XO#";
 
@@ -85,6 +86,7 @@ private:
 
 TicTacToe::State TicTacToe::get_state() const
 {
+    // recap: 函数签名末尾的const表示该函数不会修改类的成员变量
     return state;
 }
 
@@ -171,6 +173,7 @@ int TicTacToe::winner() const
 
 bool TicTacToe::done() const
 {
+    // 有人赢了或者棋盘满了就结束
     return winner() != TicTacToe::PLAYER_NONE or state.full();
 }
 
@@ -182,6 +185,7 @@ void TicTacToe::print() const
 
 TicTacToe::TicTacToe(bool verbose)
 {
+    // 开局
     this->verbose = verbose;
     reset();
 }
@@ -207,6 +211,7 @@ bool TicTacToe::State::full() const
 
 void TicTacToe::State::put(TicTacToe::Action action)
 {
+    //  一行3个格子，每个格子2位，计算出action对应的位数，然后将当前玩家的棋子放入该位置，并切换玩家
     int p = (action.y * 3 + action.x) * 2;
     board |= (turn << p);
     turn = 0b11 - turn;
@@ -214,6 +219,7 @@ void TicTacToe::State::put(TicTacToe::Action action)
 
 int TicTacToe::State::get_piece(TicTacToe::Action action) const
 {
+    // 取出action对应的位数，然后将该位置的值右移到最低位，并与0b11进行按位与运算，得到该位置的棋子类型
     int p = (action.y * 3 + action.x) * 2;
     return (board >> p) & 0b11;
 }
@@ -227,7 +233,7 @@ void TicTacToe::State::reset()
 bool TicTacToe::State::test_win() const
 {
     int mask;
-    int last_piece = 0b11 - turn;
+    int last_piece = 0b11 - turn; // 上一个人的棋子类型
     // row
     mask = last_piece | (last_piece << 2) | (last_piece << 4);
     for (int i = 0; i < 3; ++i)
