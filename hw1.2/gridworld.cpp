@@ -1,6 +1,10 @@
 #include <utility>  // 提供 std::pair 和 std::make_pair
 #include <cstdlib>  // 提供 rand() 随机数函数
 #include <iostream> // 提供 cout 等标准输入输出
+#include <vector>
+#include <iomanip> // 提供 setw, setprecision 等格式化输出工具
+#include <algorithm>
+#include <cmath>
 
 using namespace std;
 
@@ -21,6 +25,7 @@ public:
         EAST = 2,                        // 东：x 加 1
         WEST = 3;                        // 西：x 减 1
     static const char ACTION_NAME[][16]; // 各动作的名称（用于打印日志）
+    vector<double> v_table;              // 存储价值表
 
     // 状态类型：用 (x, y) 坐标对表示
     typedef pair<int, int> State;
@@ -74,10 +79,25 @@ public:
     }
 
     // 构造函数：可指定初始坐标与是否输出日志，默认从 (0, 0) 开始
-    GridWorld(int x = 0, int y = 0, bool verbose = false)
+    GridWorld(int x = 0, int y = 0, bool verbose = false) : v_table(25, 0.0)
     {
         set_state(x, y);
         this->verbose = verbose;
+    }
+    void print_v_table() // 按照矩阵格式打印 v_table（保留两位小数）
+    {
+        // fixed：固定小数点表示；setprecision(2)：保留两位小数
+        // 该设置对后续所有浮点输出持续生效，直到被修改
+        cout << fixed << setprecision(2);
+        for (int y = 0; y < 5; y++)
+        {
+            for (int x = 0; x < 5; x++)
+            {
+                cout << setw(7) << v_table[y * 5 + x] << " ";
+            }
+            cout << endl;
+        }
+        return;
     }
 
 private:
@@ -139,12 +159,38 @@ const char GridWorld::ACTION_NAME[][16] = {"NORTH(0,-1)", "SOUTH(0,1)", "EAST:(1
 int main()
 {
     // 创建 GridWorld 环境，初始状态 (0, 0)，开启详细日志输出
-    GridWorld env = GridWorld(0, 0, true);
+
+    double theta = 1e-4;
+    double gamma = 0.9;
+    GridWorld env = GridWorld(0, 0, false);
     while (true)
     {
-        int action = env.sample_action();                   // 随机选择一个动作
-        auto state_reward = env.step(action);               // 执行动作，获取新状态和奖励
-        this_thread::sleep_for(chrono::milliseconds(1000)); // 每步暂停 1 秒，便于观察
+        double delta = 0.0; // 用于判断是不是收敛
+        for (int y = 0; y < 5; y++)
+        {
+            for (int x = 0; x < 5; x++)
+            {
+                double old_v = env.v_table[y * 5 + x];
+                double new_v = 0.0;
+
+                for (int k = 0; k < 4; k++)
+                {
+                    env.set_state(x, y);
+                    pair<GridWorld::State, double> result = env.step(k);
+                    // state的first是x，second是y
+                    double new_value = env.v_table[result.first.second * 5 + result.first.first];
+                    double reward = result.second;
+                    new_v += 0.25 * (reward + gamma * new_value);
+                }
+                env.v_table[y * 5 + x] = new_v;
+                delta = max(delta, abs(old_v - new_v));
+            }
+        }
+        if (delta < theta)
+        {
+            break;
+        }
     }
+    env.print_v_table();
     return 0;
 }
