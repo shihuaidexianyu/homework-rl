@@ -206,6 +206,16 @@ class RentPolicy
 public:
     int policy[21][21]{0};
     double v_table[21][21]{0.0};
+    double rental_probability_1[21][21]{0.0};
+    double rental_probability_2[21][21]{0.0};
+    double return_probability_1[21][21]{0.0};
+    double return_probability_2[21][21]{0.0};
+    double continuation_value[21][21]{0.0};
+
+    RentPolicy()
+    {
+        initialize_transition_probabilities();
+    }
     void print_policy()
     {
         for (int i = 0; i < 21; ++i)
@@ -308,6 +318,57 @@ public:
         return poisson_probability(mean, next_inventory - current_inventory);
     }
 
+    // 四张概率表只依赖于问题参数，因此整个求解过程中只需计算一次。
+    void initialize_transition_probabilities()
+    {
+        for (int current = 0; current <= 20; ++current)
+        {
+            for (int next = 0; next <= 20; ++next)
+            {
+                rental_probability_1[current][next] =
+                    inventory_transition_probability(3.0, current, next, true);
+                rental_probability_2[current][next] =
+                    inventory_transition_probability(4.0, current, next, true);
+                return_probability_1[current][next] =
+                    inventory_transition_probability(3.0, current, next, false);
+                return_probability_2[current][next] =
+                    inventory_transition_probability(2.0, current, next, false);
+            }
+        }
+    }
+
+    /*
+        预计算：
+
+            continuation_value[rental_1][rental_2]
+            = gamma * E[V(next_state) | rental_state]
+
+        这个量只依赖于租车后的中间状态和当前 v_table。
+        之后每个动作只需枚举租车后的中间状态，不必重复枚举所有还车状态。
+    */
+    void update_continuation_values(double gamma)
+    {
+        for (int rental_1 = 0; rental_1 <= 20; ++rental_1)
+        {
+            for (int rental_2 = 0; rental_2 <= 20; ++rental_2)
+            {
+                double expected_future_value = 0.0;
+                for (int next_1 = 0; next_1 <= 20; ++next_1)
+                {
+                    for (int next_2 = 0; next_2 <= 20; ++next_2)
+                    {
+                        expected_future_value +=
+                            return_probability_1[rental_1][next_1] *
+                            return_probability_2[rental_2][next_2] *
+                            v_table[next_1][next_2];
+                    }
+                }
+                continuation_value[rental_1][rental_2] =
+                    gamma * expected_future_value;
+            }
+        }
+    }
+
     // 判断动作是否能在当前状态下执行。
     bool is_legal_action(JackCarRental::State old_state, int action) const
     {
@@ -373,14 +434,12 @@ public:
         for (int rental_1 = 0; rental_1 <= max_cars; ++rental_1)
         {
             const double rental_probability_1 =
-                inventory_transition_probability(
-                    3.0, moved_state.first, rental_1, true);
+                this->rental_probability_1[moved_state.first][rental_1];
 
             for (int rental_2 = 0; rental_2 <= max_cars; ++rental_2)
             {
                 const double rental_probability_2 =
-                    inventory_transition_probability(
-                        4.0, moved_state.second, rental_2, true);
+                    this->rental_probability_2[moved_state.second][rental_2];
                 const double rental_probability =
                     rental_probability_1 * rental_probability_2; // 联合概率
 
@@ -394,28 +453,9 @@ public:
                      (moved_state.second - rental_2)) *
                     rent_price;
 
-                // 第二层：从租车后的中间状态枚举还车后的最终状态。
-                for (int next_1 = 0; next_1 <= max_cars; ++next_1)
-                {
-                    const double return_probability_1 =
-                        inventory_transition_probability(
-                            3.0, rental_1, next_1, false);
-
-                    for (int next_2 = 0; next_2 <= max_cars; ++next_2)
-                    {
-                        const double return_probability_2 =
-                            inventory_transition_probability(
-                                2.0, rental_2, next_2, false);
-                        const double transition_probability =
-                            rental_probability *
-                            return_probability_1 *
-                            return_probability_2; // 依旧联合概率
-
-                        expected_value += transition_probability *
-                                          (rental_income - movement_cost +
-                                           gamma * v_table[next_1][next_2]);
-                    }
-                }
+                expected_value += rental_probability *
+                    (rental_income - movement_cost +
+                     continuation_value[rental_1][rental_2]);
             }
         }
 
@@ -427,6 +467,7 @@ public:
     {
         while (true)
         {
+            update_continuation_values(gamma);
             double delta = 0.0;
             for (int i = 0; i < 21; ++i)
             {
@@ -447,32 +488,39 @@ public:
                 break;
             }
         }
+        update_continuation_values(gamma);
         cout << "evaluate complete." << endl;
     }
 
-    bool policy_improve()
+    bool policy_improve(double gamma = 0.9)
     {
         bool policy_stable = true;
         for (int i = 0; i < 21; ++i)
         {
             for (int j = 0; j < 21; ++j)
             {
-                int old_action = policy[i][j];
-                double old_action_value = expected_action_value(
-                    make_pair(i, j), old_action, 0.9);
+                const JackCarRental::State current_state = make_pair(i, j);
+                const int old_action = policy[i][j];
+                int best_action = old_action;
+                double best_action_value = expected_action_value(
+                    current_state, old_action, gamma);
                 for (int a = -5; a <= 5; ++a)
                 {
-                    if (is_legal_action(make_pair(i, j), a))
+                    if (is_legal_action(current_state, a))
                     {
                         const double action_value = expected_action_value(
-                            make_pair(i, j), a, 0.9);
-                        if (action_value > old_action_value)
+                            current_state, a, gamma);
+                        if (action_value > best_action_value)
                         {
-                            policy_stable = false;
-                            policy[i][j] = a;
-                            continue;
+                            best_action_value = action_value;
+                            best_action = a;
                         }
                     }
+                }
+                if (best_action != old_action)
+                {
+                    policy_stable = false;
+                    policy[i][j] = best_action;
                 }
             }
         }
@@ -487,16 +535,14 @@ public:
 // 主函数：创建环境并随机执行动作，用于直观演示环境的运行
 int main()
 {
-    // 创建 JackCarRental 环境，初始状态 (0, 0)，开启详细日志输出
-    JackCarRental env(0, 0, true);
     double gamma = 0.9;
     double theta = 1e-4;
 
     RentPolicy dp = RentPolicy();
     while (true)
     {
-        dp.policy_evaluate();
-        if (dp.policy_improve())
+        dp.policy_evaluate(gamma, theta);
+        if (dp.policy_improve(gamma))
         {
             break;
         }
