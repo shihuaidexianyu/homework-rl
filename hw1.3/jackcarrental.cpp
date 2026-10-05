@@ -2,6 +2,7 @@
 #include <random>    // 提供泊松分布、均匀分布等随机数生成工具
 #include <utility>   // 提供 std::pair 和 std::make_pair
 #include <iostream>  // 提供 cout 等标准输入输出
+#include <iomanip>   // 提供 setw 等格式化输出工具
 #include <algorithm> // 提供 max、min 函数
 #include <cmath>     // 提供 exp、log 和 lgamma 函数
 
@@ -218,11 +219,11 @@ public:
     }
     void print_policy()
     {
-        for (int i = 0; i < 21; ++i)
+        for (int i = 20; i >= 0; --i)
         {
             for (int j = 0; j < 21; ++j)
             {
-                cout << policy[i][j] << " ";
+                cout << setw(2) << policy[i][j] << " ";
             }
             cout << endl;
         }
@@ -454,8 +455,8 @@ public:
                     rent_price;
 
                 expected_value += rental_probability *
-                    (rental_income - movement_cost +
-                     continuation_value[rental_1][rental_2]);
+                                  (rental_income - movement_cost +
+                                   continuation_value[rental_1][rental_2]);
             }
         }
 
@@ -489,7 +490,7 @@ public:
             }
         }
         update_continuation_values(gamma);
-        cout << "evaluate complete." << endl;
+        // cout << "evaluate complete." << endl;
     }
 
     bool policy_improve(double gamma = 0.9)
@@ -524,7 +525,7 @@ public:
                 }
             }
         }
-        cout << "improve complete." << endl;
+        // cout << "improve complete." << endl;
         return policy_stable;
     }
 };
