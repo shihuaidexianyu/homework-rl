@@ -1,0 +1,7 @@
+flowchart LR
+    S["初始状态 s"] --> A["调车 a"] --> R["租车<br/>P_rent"] --> D["还车<br/>P_return"] --> N["最终状态 s'"]
+    R -.-> X["普通情况：点概率<br/>边界情况：尾概率"]
+    D -.-> X
+    P["完整路径概率<br/>P = P_rent × P_return"]
+    R --> P
+    D --> P
