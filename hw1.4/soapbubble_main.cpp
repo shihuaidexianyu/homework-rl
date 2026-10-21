@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <cmath>
+#include <random>
 
 using namespace std;
 
@@ -21,9 +22,11 @@ public:
         set_bubble(bubble);
     }
     // 存储逻辑
-    // 一个完成的二维矩形数组，附带 4 个边界数组，分别存储每一行和每一列的边界位置
+    // 一个完成的二维矩形数组 Bubble，内部存储的是该点的高度信息。
+    // 附带 4 个边界数组，分别存储每一行和每一列的边界位置：
     // x_lower存储的是给定一个 y 的情况下，x 的最小值，x_upper存储的是给定一个 y 的情况下，x 的最大值
     // y_lower存储的是给定一个 x 的情况下，y 的最小值，y_upper存储的是给定一个 x 的情况下，y 的最大值
+    // 稳态下，一个点的高度是其上下左右四个点的高度的平均值。
     SoapBubble(int max_x, int max_y,
                const vector<int> &x_lower, const vector<int> &x_upper,
                const vector<int> &y_lower, const vector<int> &y_upper)
@@ -51,10 +54,12 @@ public:
     }
     bool inside_bubble(int x, int y) const
     {
+        //  检查这个坐标是否合法，不管高度（因为高度还需要迭代计算出来）
         return x_lower[y] <= x and x <= x_upper[y] and y_lower[x] <= y and y <= y_upper[x];
     }
     bool at_border(int x, int y) const
     {
+        // 检查坐标是否在边界上，这将成为高度迭代计算的初始条件，bubble 生成的时候也是指定这些点的高度
         return inside_bubble(x, y) and (x_lower[y] == x or x == x_upper[y] or y_lower[x] == y or y == y_upper[x]);
     }
     void print_bubble(void) const
@@ -108,6 +113,32 @@ public:
     void inner_heights_mc(int iter = 500000)
     {
         // TODO
+        std::mt19937 gen(std::random_device{}());     // 随机引擎，只需构造一次
+        std::uniform_int_distribution<int> dir(0, 3); // 均匀分布 [0, 3]
+        for (int y = 0; y < max_y; ++y)
+        {
+            for (int x = 0; x < max_x; ++x)
+            {
+                if (not inside_bubble(x, y) or at_border(x, y))
+                {
+                    continue; // 只估计内部点，保护边界值
+                }
+                // 选定一个出发点
+                double sum = 0;
+                for (int i = 0; i < iter; ++i)
+                {
+                    int new_x = x, new_y = y;
+                    while (not at_border(new_x, new_y))
+                    {
+                        int d = dir(gen); // 随机找一个方向移动一步
+                        new_x += DX[d];
+                        new_y += DY[d];
+                    }
+                    sum += bubble[new_y][new_x];
+                }
+                bubble[y][x] = sum / iter; // 取平均值作为估计
+            }
+        }
     }
 
 private:
@@ -124,6 +155,7 @@ SoapBubble default_bubble_generator(int max_x = 10, int max_y = 10)
 {
     vector<int> x_lower, x_upper, y_lower, y_upper;
     for (int y = 0, lower, upper; y < max_y; ++y)
+    // 这个语法第一次见：在 for 循环中定义多个变量，lower 和 upper 在每次循环中都会被重新定义和初始化
     {
         lower = y >> 2;
         upper = max_y - 1 - ((max_y - y) >> 2);
@@ -137,8 +169,10 @@ SoapBubble default_bubble_generator(int max_x = 10, int max_y = 10)
         y_lower.push_back(lower);
         y_upper.push_back(upper);
     }
+    // 上面是生成一个默认的边界。
     SoapBubble soap_bubble(max_x, max_y, x_lower, x_upper, y_lower, y_upper);
     SoapBubble::Bubble bubble(max_y);
+    // 下面是生成一个默认的泡泡高度，边界上是一个函数，内部是 0
     for (int y = 0; y < max_y; ++y)
     {
         for (int x = 0; x < max_x; ++x)
