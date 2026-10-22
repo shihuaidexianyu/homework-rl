@@ -117,40 +117,45 @@ public:
             {
                 for (int player_sum = 11; player_sum <= 20; ++player_sum)
                 {
-                    env.reset(dealer_shown, player_ace, player_sum); // 固定初始状态
+
                     for (int first_action = Blackjack::HIT; first_action <= Blackjack::STICK; ++first_action)
                     {
-                        episode.clear();
-                        // 遍历起点动作（HIT / STICK）
-                        episode.emplace_back(env.state(), first_action); // 记录玩家的首步
-                        Blackjack::StepResult result = env.step(first_action);
-                        while (not result.done and env.state().turn == Blackjack::PLAYER)
+                        for (int i = 0; i < n; ++i)
                         {
-                            int action = (*this)(env.state());         // 玩家按当前策略选动作
-                            episode.emplace_back(env.state(), action); // 记录玩家步
-                            result = env.step(action);
-                        }
-                        // 该庄家了，但我们不记录庄家的步，只要让庄家按固定策略行动直到终局即可
-                        while (not result.done and env.state().turn == Blackjack::DEALER)
-                        {
-                            int action = (*this)(env.state()); // 庄家按固定策略选动作
-                            result = env.step(action);
-                        }
-                        // 终局奖励直接取最后一步的 player_reward（±1/0），不必自己重算结算逻辑
-                        double G = result.player_reward;
-                        // 首次访问 MC 的标准回溯：从后往前扫轨迹，G ← γ·G + r
-                        // 本问题中步间奖励 r 全为 0、γ=1，所以回溯过程中 G 恒等于终局奖励；
-                        // 写成倒序累加的形式是为了与书上伪代码一致，若以后奖励结构改变也不用改这里。
-                        // （玩家每次 HIT 后 player_sum 一定会变化，同一 (s,a) 一局内不会重复，
-                        //   天然满足"首次访问"，无需额外判重）
-                        for (auto it = episode.rbegin(); it != episode.rend(); ++it)
-                        {
-                            // recap: 写引用是为了直接修改 value 与计数，这样就不需要再用下标访问两次了
-                            const EpisodeStep &step = *it;
-                            int &count = state_action_count[step.dealer_shown][step.player_ace][step.player_sum][step.action];
-                            double &q = value[step.dealer_shown][step.player_ace][step.player_sum][step.action];
-                            count += 1;
-                            q += (G - q) / count;
+                            // 每个起点各模拟 n 局
+                            episode.clear();                                 // 记录玩家的轨迹（状态+动作）
+                            env.reset(dealer_shown, player_ace, player_sum); // 固定初始状态
+                            // 遍历起点动作（HIT / STICK）
+                            episode.emplace_back(env.state(), first_action); // 记录玩家的首步
+                            Blackjack::StepResult result = env.step(first_action);
+                            while (not result.done and env.state().turn == Blackjack::PLAYER)
+                            {
+                                int action = (*this)(env.state());         // 玩家按当前策略选动作
+                                episode.emplace_back(env.state(), action); // 记录玩家步
+                                result = env.step(action);
+                            }
+                            // 该庄家了，但我们不记录庄家的步，只要让庄家按固定策略行动直到终局即可
+                            while (not result.done and env.state().turn == Blackjack::DEALER)
+                            {
+                                int action = (*this)(env.state()); // 庄家按固定策略选动作
+                                result = env.step(action);
+                            }
+                            // 终局奖励直接取最后一步的 player_reward（±1/0），不必自己重算结算逻辑
+                            double G = result.player_reward;
+                            // 首次访问 MC 的标准回溯：从后往前扫轨迹，G ← γ·G + r
+                            // 本问题中步间奖励 r 全为 0、γ=1，所以回溯过程中 G 恒等于终局奖励；
+                            // 写成倒序累加的形式是为了与书上伪代码一致，若以后奖励结构改变也不用改这里。
+                            // （玩家每次 HIT 后 player_sum 一定会变化，同一 (s,a) 一局内不会重复，
+                            //   天然满足"首次访问"，无需额外判重）
+                            for (auto it = episode.rbegin(); it != episode.rend(); ++it)
+                            {
+                                // recap: 写引用是为了直接修改 value 与计数，这样就不需要再用下标访问两次了
+                                const EpisodeStep &step = *it;
+                                int &count = state_action_count[step.dealer_shown][step.player_ace][step.player_sum][step.action];
+                                double &q = value[step.dealer_shown][step.player_ace][step.player_sum][step.action];
+                                count += 1;
+                                q += (G - q) / count;
+                            }
                         }
                     }
                 }
