@@ -83,6 +83,10 @@ MC 估计结果：
 
 逐点对比两种方法，**最大绝对误差为 0.01**，远小于 ±0.05 的要求——2.2 节所述的等价性得到了数值验证。
 
+运行结果截图（上：初始边界；中：DP 结果；下：MC 结果）：
+
+![SoapBubble 运行结果](soapbubble_run.png)
+
 ## 3. Blackjack：带探索起点的蒙特卡洛控制
 
 ### 3.1 问题建模
@@ -193,6 +197,10 @@ Player With Usable Ace
 价值函数的线框曲面：
 
 ![Blackjack 状态价值曲面](blackjack_value.png)
+
+运行结果截图（上：价值表；中：策略表；下：用学得的策略演示一局）：
+
+![Blackjack 运行结果](blackjack_run.png)
 
 ### 3.6 与书上 Figure 5.2 的对照与分析
 
