@@ -72,6 +72,26 @@ public:
 
         // simply take argmax
         // 即：policy[s] = (value[s][STICK] > value[s][HIT]) ? STICK : HIT
+        for (int dealer_shown = 1; dealer_shown <= 10; ++dealer_shown)
+        {
+            for (int player_ace = 0; player_ace <= 1; ++player_ace)
+            {
+                for (int player_sum = 11; player_sum <= 20; ++player_sum)
+                {
+                    // 枚举所有状态 (dealer_shown, player_ace, player_sum)，取使 Q 最大的动作作为新策略
+                    int action = policy[dealer_shown][player_ace][player_sum];
+                    if (value[dealer_shown][player_ace][player_sum][Blackjack::STICK] > value[dealer_shown][player_ace][player_sum][Blackjack::HIT])
+                    {
+                        action = Blackjack::STICK;
+                    }
+                    else
+                    {
+                        action = Blackjack::HIT;
+                    }
+                    policy[dealer_shown][player_ace][player_sum] = action;
+                }
+            }
+        }
     }
     // ---- 【待实现】策略评估：蒙特卡洛估计动作价值 ----
     // n iterations for each start (initial state and first action), no need to modify.
@@ -90,6 +110,52 @@ public:
         // 注意：只用"玩家的步"更新价值；庄家的步属于环境动态，不进 episode
         // 更新方式：首次访问 MC，增量平均
         //   count[s][a] += 1; value[s][a] += (G - value[s][a]) / count[s][a]
+        set_value_initial(); // 清零 value 与计数
+        for (int dealer_shown = 1; dealer_shown <= 10; ++dealer_shown)
+        {
+            for (int player_ace = 0; player_ace <= 1; ++player_ace)
+            {
+                for (int player_sum = 11; player_sum <= 20; ++player_sum)
+                {
+                    env.reset(dealer_shown, player_ace, player_sum); // 固定初始状态
+                    for (int first_action = Blackjack::HIT; first_action <= Blackjack::STICK; ++first_action)
+                    {
+                        episode.clear();
+                        // 遍历起点动作（HIT / STICK）
+                        episode.emplace_back(env.state(), first_action); // 记录玩家的首步
+                        Blackjack::StepResult result = env.step(first_action);
+                        while (not result.done and env.state().turn == Blackjack::PLAYER)
+                        {
+                            int action = (*this)(env.state());         // 玩家按当前策略选动作
+                            episode.emplace_back(env.state(), action); // 记录玩家步
+                            result = env.step(action);
+                        }
+                        // 该庄家了，但我们不记录庄家的步，只要让庄家按固定策略行动直到终局即可
+                        while (not result.done and env.state().turn == Blackjack::DEALER)
+                        {
+                            int action = (*this)(env.state()); // 庄家按固定策略选动作
+                            result = env.step(action);
+                        }
+                        // 终局奖励直接取最后一步的 player_reward（±1/0），不必自己重算结算逻辑
+                        double G = result.player_reward;
+                        // 首次访问 MC 的标准回溯：从后往前扫轨迹，G ← γ·G + r
+                        // 本问题中步间奖励 r 全为 0、γ=1，所以回溯过程中 G 恒等于终局奖励；
+                        // 写成倒序累加的形式是为了与书上伪代码一致，若以后奖励结构改变也不用改这里。
+                        // （玩家每次 HIT 后 player_sum 一定会变化，同一 (s,a) 一局内不会重复，
+                        //   天然满足"首次访问"，无需额外判重）
+                        for (auto it = episode.rbegin(); it != episode.rend(); ++it)
+                        {
+                            // recap: 写引用是为了直接修改 value 与计数，这样就不需要再用下标访问两次了
+                            const EpisodeStep &step = *it;
+                            int &count = state_action_count[step.dealer_shown][step.player_ace][step.player_sum][step.action];
+                            double &q = value[step.dealer_shown][step.player_ace][step.player_sum][step.action];
+                            count += 1;
+                            q += (G - q) / count;
+                        }
+                    }
+                }
+            }
+        }
     }
     // ---- 打印策略表：行=玩家点数(21→11)，列=庄家明牌(A→T)；左无可用A，右有可用A ----
     // 输出形式对应书上 P100 Figure 5.2 的 π*（H=要牌，S=停牌）
@@ -153,11 +219,16 @@ private:
     // 2: player_usable_ace (true/false);
     // 22: player_sum (only need to consider 11-20, because HIT when sum<11 and STICK when sum=21 are always best action.)
     // 注：实际只需关心点数 11~20——<11 要牌必不亏，=21 停牌必最优
+    // 第一个维度不是 10 的原因是方便直接用 dealer_shown 作为下标（1~10），0 不用
+    // 第三个维度同理，player_sum 直接用点数作为下标（0~21），0~10 不用
+    // 一个 state 就是一个三元组 (dealer_shown, player_ace, player_sum)，所以 policy[s] = action
     int policy[11][2][22];
     // ---- 动作价值表 Q(s,a)：MC 估计的目标 ----
     // 11:dealer_shown; 2:player_usable_ace; 22:player_sum; 2:action (0:HIT, 1:STICK)
+    // value[s][a] = Q(s,a)
     double value[11][2][22][2];
     // 每个 (s,a) 被首次访问并累计回报的次数 N(s,a)，用于增量求均值
+    // state_action_count[s][a] = N(s,a)
     int state_action_count[11][2][22][2];
 
     // record a episode sampled (only player's steps).
@@ -196,23 +267,26 @@ private:
 // Demonstrative play of player & dealer with default policy
 int main()
 {
-    Blackjack env(true); // verbose=true：打印每步细节
+    Blackjack env(false); // verbose=true：打印每步细节
     BlackjackPolicyDefault policy;
+    BlackjackPolicyLearnableDefault learnable_policy; // 作业要求改成用这个类训练策略
+    learnable_policy.update_value(env, 10000);        // 先评估当前策略
+    learnable_policy.update_policy();                 // 再改进策略
+    learnable_policy.print_policy();                  // 输出当前策略表
     bool done;
-    while (true)
+
+    done = false;
+    env.reset();        // 随机开新局
+    env.verbose = true; // 演示时打印每步细节
+    // 单局循环：观测状态 → 策略出动作 → 环境推进一步，直到终局
+    while (not done)
     {
-        done = false;
-        env.reset(); // 随机开新局
-        // 单局循环：观测状态 → 策略出动作 → 环境推进一步，直到终局
-        while (not done)
-        {
-            Blackjack::State state = env.state();
-            int action = policy(state);
-            Blackjack::StepResult result = env.step(action);
-            done = result.done;
-        }
-        cout << endl;
-        this_thread::sleep_for(chrono::milliseconds(1000)); // 间隔 1 秒再开下一局
+        Blackjack::State state = env.state();
+        int action = learnable_policy(state);
+        Blackjack::StepResult result = env.step(action);
+        done = result.done;
     }
+    cout << endl;
+    this_thread::sleep_for(chrono::milliseconds(1000)); // 间隔 1 秒再开下一局
     return 0;
 }
