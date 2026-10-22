@@ -272,15 +272,24 @@ private:
 // Demonstrative play of player & dealer with default policy
 int main()
 {
-    Blackjack env(false); // verbose=true：打印每步细节
-    BlackjackPolicyDefault policy;
-    BlackjackPolicyLearnableDefault learnable_policy; // 作业要求改成用这个类训练策略
-    learnable_policy.update_value(env, 10000);        // 先评估当前策略
-    learnable_policy.update_policy();                 // 再改进策略
-    learnable_policy.print_policy();                  // 输出当前策略表
-    bool done;
-
-    done = false;
+    Blackjack env(false); // 训练阶段不打印逐步细节
+    BlackjackPolicyLearnableDefault learnable_policy;
+    // 蒙特卡洛 ES 策略迭代：反复 "评估 → 改进"，直到策略稳定
+    const int ROUNDS = 100;       // 策略迭代轮数
+    const int N_PER_START = 1000; // 每轮中每个起点（初始状态 × 首动作）模拟的局数
+    for (int round = 1; round <= ROUNDS; ++round)
+    {
+        learnable_policy.update_value(env, N_PER_START); // 策略评估：MC 估计当前策略的 Q
+        learnable_policy.update_policy();                // 策略改进：π(s) ← argmax_a Q(s,a)
+        if (round % 20 == 0)                             // 每 20 轮观察一次策略表的变化
+        {
+            cout << "== round " << round << " ==" << endl;
+            learnable_policy.print_policy();
+        }
+    }
+    learnable_policy.print_value();  // 输出最终策略下的状态价值表
+    learnable_policy.print_policy(); // 输出最终策略表（对照书上 P100 Figure 5.2）
+    bool done = false;
     env.reset();        // 随机开新局
     env.verbose = true; // 演示时打印每步细节
     // 单局循环：观测状态 → 策略出动作 → 环境推进一步，直到终局

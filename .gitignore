@@ -1,2 +1,16 @@
-hw1.1/main
+# ---- VS Code 配置 ----
 .vscode/tasks.json
+
+# ---- 编译产物（可执行文件）----
+hw1.1/main
+hw1.3/jackcarrental
+hw1.4/blackjack_main
+hw1.4/soapbubble
+
+# ---- Python 缓存 ----
+__pycache__/
+*.py[cod]
+
+# ---- 作业提交目录（含学号姓名，不上传）----
+2300013710秦宏伟/
+
